@@ -1,0 +1,508 @@
+openapi: 3.1.0
+info:
+  title: edu_rppa API
+  description: |
+    Демонстрационное API для мастер-класса по архитектуре информационных систем.
+    Связка Frontend ↔ FastAPI ↔ PostgreSQL.
+  version: 1.0.0
+
+servers:
+  - url: https://edu-rppa-sk0v4edu.amvera.io
+    description: Production (Amvera Cloud)
+  - url: http://localhost:8000
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Авторизация через одноразовый e-mail-код
+  - name: Users
+    description: CRUD пользователей
+  - name: Products
+    description: CRUD товаров
+  - name: Orders
+    description: Создание заказов
+  - name: Admin
+    description: Админ-эндпоинты (временные)
+
+paths:
+  /api/auth/request-code:
+    post:
+      tags: [Auth]
+      summary: Запросить код авторизации
+      description: |
+        Отправляет 6-значный код на указанный email.
+        Если пользователя с таким email нет — создаёт автоматически.
+        В режиме DEV_DELIVERY=true код возвращается в ответе (поле demo_code).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                name:
+                  type: string
+                  description: Имя пользователя (если не указано — генерируется из email)
+                  example: Ivan Petrov
+      responses:
+        "200":
+          description: Код отправлен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  demo_code:
+                    type: string
+                    description: Код (только при DEV_DELIVERY=true)
+                    example: "482710"
+        "400":
+          description: Невалидный email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/verify-code:
+    post:
+      tags: [Auth]
+      summary: Подтвердить код и создать сессию
+      description: |
+        Проверяет код, создаёт сессию и устанавливает cookies:
+        - `sid` (HttpOnly) — идентификатор сессии
+        - `u` — JSON с email и именем для UI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                code:
+                  type: string
+                  example: "482710"
+      responses:
+        "200":
+          description: Сессия создана, cookies установлены
+          headers:
+            Set-Cookie:
+              description: "sid и u cookies"
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "400":
+          description: Неверный или просроченный код
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход из системы
+      description: Удаляет сессию из БД и очищает cookies.
+      responses:
+        "200":
+          description: Сессия удалена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: Получить пользователей
+      description: Без параметра `id` — все пользователи. С `id` — конкретный.
+      parameters:
+        - name: id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: ID пользователя
+      responses:
+        "200":
+          description: Список пользователей или один пользователь
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      users:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/User"
+                  - type: object
+                    properties:
+                      user:
+                        $ref: "#/components/schemas/User"
+        "401":
+          description: Не авторизован
+
+    post:
+      tags: [Users]
+      summary: Создать пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name:
+                  type: string
+                  example: Ivan Petrov
+                email:
+                  type: string
+                  format: email
+                  example: ivan@example.com
+      responses:
+        "201":
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  id:
+                    type: integer
+        "400":
+          description: Не указаны обязательные поля
+        "409":
+          description: Email уже существует
+
+    put:
+      tags: [Users]
+      summary: Обновить пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: integer
+                  example: 1
+                name:
+                  type: string
+                  example: Ivan Updated
+                email:
+                  type: string
+                  format: email
+                  example: ivan_new@example.com
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "404":
+          description: Не найден
+        "409":
+          description: Email уже существует
+
+    delete:
+      tags: [Users]
+      summary: Удалить пользователя
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Удалено
+        "404":
+          description: Не найден
+
+  /api/products:
+    get:
+      tags: [Products]
+      summary: Получить товары
+      description: Без параметра `id` — все товары. С `id` — конкретный.
+      parameters:
+        - name: id
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Список товаров или один товар
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      products:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Product"
+                  - type: object
+                    properties:
+                      product:
+                        $ref: "#/components/schemas/Product"
+
+    post:
+      tags: [Products]
+      summary: Создать товар
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, description, price_cents]
+              properties:
+                name:
+                  type: string
+                  example: Ноутбук
+                description:
+                  type: string
+                  example: Мощный ноутбук для разработки
+                price_cents:
+                  type: integer
+                  minimum: 0
+                  example: 99900
+                image_url:
+                  type: string
+                  nullable: true
+                  example: https://example.com/img.jpg
+      responses:
+        "201":
+          description: Товар создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  id:
+                    type: integer
+        "400":
+          description: Невалидные данные
+
+    put:
+      tags: [Products]
+      summary: Обновить товар
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: integer
+                  example: 1
+                name:
+                  type: string
+                description:
+                  type: string
+                price_cents:
+                  type: integer
+                  minimum: 0
+                image_url:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: Обновлено
+        "404":
+          description: Не найден
+
+    delete:
+      tags: [Products]
+      summary: Удалить товар
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Удалено
+        "404":
+          description: Не найден
+
+  /api/orders:
+    post:
+      tags: [Orders]
+      summary: Создать заказ
+      description: |
+        Требует авторизации (cookie `sid`).
+        Принимает массив товаров с количеством, проверяет наличие,
+        рассчитывает итоговую сумму и сохраняет в БД.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [product_id, qty]
+                    properties:
+                      product_id:
+                        type: integer
+                        example: 1
+                      qty:
+                        type: integer
+                        minimum: 1
+                        example: 2
+      responses:
+        "201":
+          description: Заказ создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  order:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      user_id:
+                        type: integer
+                      total_cents:
+                        type: integer
+                      created_at:
+                        type: string
+                        format: date-time
+                      items_map:
+                        type: object
+        "400":
+          description: Пустой список товаров или товар не найден
+        "401":
+          description: Не авторизован
+
+  /api/admin/query:
+    get:
+      tags: [Admin]
+      summary: Выполнить SQL-запрос (временный)
+      description: Защищён секретным ключом. Для отладки и просмотра данных.
+      parameters:
+        - name: secret
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: sql
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "SELECT * FROM users"
+      responses:
+        "200":
+          description: Результат запроса
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                  count:
+                    type: integer
+        "403":
+          description: Неверный секрет
+        "500":
+          description: Ошибка SQL
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Ivan Petrov
+        email:
+          type: string
+          format: email
+          example: ivan@example.com
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-03-20T12:00:00+00:00"
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Ноутбук
+        description:
+          type: string
+          example: Мощный ноутбук для разработки
+        price_cents:
+          type: integer
+          example: 99900
+        image_url:
+          type: string
+          nullable: true
+          example: https://example.com/img.jpg
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "valid email required"

@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
+import yaml
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -29,7 +30,7 @@ OPEN_EXACT = frozenset(
         "/api/auth/logout",
     }
 )
-OPEN_PREFIX = ("/assets/", "/favicon", "/robots.txt", "/site.webmanifest", "/api/admin/")
+OPEN_PREFIX = ("/assets/", "/favicon", "/robots.txt", "/site.webmanifest", "/api/admin/", "/docs", "/redoc", "/openapi.json")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -81,7 +82,22 @@ async def lifespan(_app: FastAPI):
     await close_pool()
 
 
-app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
+_openapi_path = Path(__file__).resolve().parent.parent / "openapi.yaml"
+_custom_openapi = None
+if _openapi_path.exists():
+    with open(_openapi_path, encoding="utf-8") as f:
+        _custom_openapi = yaml.safe_load(f)
+
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    title="edu_rppa API",
+    version="1.0.0",
+)
+
+if _custom_openapi:
+    app.openapi_schema = _custom_openapi
 app.add_middleware(AuthMiddleware)
 
 app.include_router(auth.router)
