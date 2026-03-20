@@ -430,105 +430,67 @@ async function createUser(name, email) {
 
 ## Интеграция с внешними сервисами
 
-### Отправка email (пример)
+### Отправка email (backend, Python)
 
-```javascript
-// В функции request-code.js
-async function sendEmail(env, { to, subject, text }) {
-  if (env.DEV_DELIVERY === 'true') {
-    console.log({ demoMail: { to, subject, text } });
-    return { ok: true, demo: true };
-  }
+```python
+# backend/mailer.py
+import os
+import httpx
 
-  // Интеграция с Resend (пример)
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.RESEND_API_KEY}`,
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: 'no-reply@yourdomain.com',
-      to,
-      subject,
-      text
-    })
-  });
+async def send_email(to: str, subject: str, text: str) -> dict:
+    if os.environ.get("DEV_DELIVERY") == "true":
+        print(f"Demo mail: to={to} subject={subject} text={text}")
+        return {"ok": True, "demo": True}
 
-  if (!res.ok) {
-    throw new Error('Email send failed: ' + await res.text());
-  }
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        raise RuntimeError("Email sender not configured.")
 
-  return { ok: true };
-}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"from": "no-reply@yourdomain.com", "to": to, "subject": subject, "text": text},
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Email send failed: {resp.text}")
+
+    return {"ok": True}
 ```
 
 ---
 
 ## Тестирование
 
-### Тест создания пользователя
+### Тест создания пользователя (curl)
 
-```javascript
-async function testCreateUser() {
-  const testUser = {
-    name: 'Test User',
-    email: `test${Date.now()}@example.com`
-  };
+```bash
+# Создать пользователя
+curl -X POST http://127.0.0.1:8000/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Test User", "email": "test@example.com"}'
 
-  try {
-    const res = await fetch('/api/users', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(testUser)
-    });
-    
-    const data = await res.json();
-    console.assert(res.ok, 'Пользователь должен быть создан');
-    console.assert(data.id, 'Должен быть возвращен ID');
-    console.log('✓ Тест пройден');
-    return data;
-  } catch (error) {
-    console.error('✗ Тест провален:', error);
-    throw error;
-  }
-}
+# Ожидаемый ответ: {"ok": true, "id": 1}
 ```
 
-### Тест создания заказа
+### Тест создания заказа (curl)
 
-```javascript
-async function testCreateOrder() {
-  // 1. Получить товары
-  const productsRes = await fetch('/api/products');
-  const productsData = await productsRes.json();
-  const products = productsData.products;
-  
-  if (products.length === 0) {
-    throw new Error('Нет товаров для теста');
-  }
+```bash
+# 1. Запросить код (демо-режим вернёт код в ответе)
+curl -X POST http://127.0.0.1:8000/api/auth/request-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com"}'
 
-  // 2. Создать заказ с первым товаром
-  const item = {
-    product_id: products[0].id,
-    qty: 1
-  };
+# 2. Верифицировать код и получить cookie
+curl -X POST http://127.0.0.1:8000/api/auth/verify-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "code": "DEMO_CODE"}' \
+  -c cookies.txt
 
-  const orderRes = await fetch('/api/orders', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({
-      items: [item],
-      total_cents: products[0].price_cents
-    })
-  });
-
-  const orderData = await orderRes.json();
-  console.assert(orderRes.ok, 'Заказ должен быть создан');
-  console.assert(orderData.order.id, 'Должен быть возвращен ID заказа');
-  console.log('✓ Тест пройден');
-  return orderData;
-}
+# 3. Создать заказ с cookie
+curl -X POST http://127.0.0.1:8000/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"items": [{"product_id": 1, "qty": 2}]}' \
+  -b cookies.txt
 ```
 

@@ -15,26 +15,21 @@
 **Процесс:**
 1. Пользователь вводит email (и опционально имя)
 2. Если пользователя нет в БД и указано имя → создается новый пользователь
-3. Генерируется 6-значный код (100000-999999)
+3. Генерируется 6-значный код (100000–999999)
 4. Код хешируется через SHA-256 и сохраняется в БД
 5. Код отправляется на email (или возвращается в ответе в демо-режиме)
 6. Код действителен 10 минут
 
-**Код:**
-```javascript
-// Генерация кода
-function genCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
+**Код (Python):**
+```python
+import hashlib
+import secrets
 
-// Хеширование
-async function sha256(s) {
-  const b = new TextEncoder().encode(s);
-  const d = await crypto.subtle.digest('SHA-256', b);
-  return [...new Uint8Array(d)]
-    .map(x => x.toString(16).padStart(2, '0'))
-    .join('');
-}
+def _gen_code() -> str:
+    return str(secrets.randbelow(900000) + 100000)
+
+def _sha256(s: str) -> str:
+    return hashlib.sha256(s.encode()).hexdigest()
 ```
 
 ---
@@ -51,14 +46,19 @@ async function sha256(s) {
 5. Устанавливаются cookies: `sid` и `u`
 6. Пользователь перенаправляется на главную страницу
 
-**Создание сессии:**
-```javascript
-const sid = cryptoRandom(32); // 32 байта в hex
-const exp = now + 7 * 24 * 60 * 60; // 7 дней
+**Создание сессии (Python):**
+```python
+import secrets
+import time
 
-await db.prepare(
-  "INSERT INTO sessions(session_id, email, expires_at, created_at) VALUES(?,?,?,?)"
-).bind(sid, email, exp, now).run();
+sid = secrets.token_hex(32)           # 64-символьная hex-строка
+exp = int(time.time()) + 7 * 24 * 3600  # 7 дней
+
+await conn.execute(
+    "INSERT INTO sessions (session_id, email, expires_at, created_at) "
+    "VALUES ($1, $2, $3, $4)",
+    sid, email, exp, int(time.time()),
+)
 ```
 
 ---
@@ -70,11 +70,10 @@ await db.prepare(
 **Назначение:** Идентификатор сессии для проверки аутентификации
 
 **Параметры:**
-- `HttpOnly: true` - Недоступен из JavaScript
-- `Secure: true` - Только через HTTPS
-- `SameSite: Lax` - Защита от CSRF
-- `Path: /` - Действует для всего сайта
-- `Max-Age: 604800` - 7 дней
+- `HttpOnly: true` — Недоступен из JavaScript
+- `SameSite: Lax` — Защита от CSRF
+- `Path: /` — Действует для всего сайта
+- `Max-Age: 604800` — 7 дней
 
 **Использование:**
 - Проверяется в middleware для защищенных маршрутов
@@ -95,84 +94,73 @@ await db.prepare(
 ```
 
 **Параметры:**
-- `HttpOnly: false` - Доступен из JavaScript
-- `Secure: true` - Только через HTTPS
-- `SameSite: Lax` - Защита от CSRF
-- `Path: /` - Действует для всего сайта
-- `Max-Age: 604800` - 7 дней
+- `HttpOnly: false` — Доступен из JavaScript
+- `SameSite: Lax` — Защита от CSRF
+- `Path: /` — Действует для всего сайта
+- `Max-Age: 604800` — 7 дней
 
 **Использование:**
-- Отображается в topbar как "Signed in: Имя"
+- Отображается в topbar как «Signed in: Имя»
 - Используется в форме заказа для предзаполнения данных
-
-**Пример чтения:**
-```javascript
-function getUserFromCookie() {
-  try {
-    const c = parseCookies();
-    if (!c.u) return null;
-    return JSON.parse(c.u);
-  } catch {
-    return null;
-  }
-}
-```
 
 ---
 
 ## Middleware защита
 
-**Файл:** `functions/_middleware.js`
+**Файл:** `backend/app.py` → класс `AuthMiddleware`
 
 ### Открытые маршруты
 
 Следующие маршруты доступны без аутентификации:
 
-- `/` - Главная страница
-- `/index.html` - Главная страница
-- `/login` - Страница входа
-- `/login.html` - Страница входа
-- `/api/auth/request-code` - Запрос кода
-- `/api/auth/verify-code` - Верификация кода
-- `/api/auth/logout` - Выход
-- `/assets/*` - Статические файлы
-- `/favicon*` - Иконки
-- `/robots.txt` - Файл для поисковых роботов
+- `/` — Главная страница
+- `/index.html` — Главная страница
+- `/login` — Страница входа
+- `/login.html` — Страница входа
+- `/api/auth/request-code` — Запрос кода
+- `/api/auth/verify-code` — Верификация кода
+- `/api/auth/logout` — Выход
+- `/assets/*` — Статические файлы
+- `/favicon*` — Иконки
+- `/robots.txt` — Файл для поисковых роботов
+- `/site.webmanifest` — Манифест PWA
 
 ### Защищенные маршруты
 
 Все остальные маршруты требуют валидной сессии:
 
-- `/users/*` - Управление пользователями
-- `/products/*` - Управление товарами
-- `/orders/*` - Создание заказов
-- `/api/users` - API пользователей
-- `/api/products` - API товаров
-- `/api/orders` - API заказов
+- `/users/*` — Управление пользователями
+- `/products/*` — Управление товарами
+- `/orders/*` — Создание заказов
+- `/api/users` — API пользователей
+- `/api/products` — API товаров
+- `/api/orders` — API заказов
 
-### Логика проверки
+### Логика проверки (Python)
 
-```javascript
-// 1. Проверка cookie sid
-const cookies = parseCookie(request.headers.get('cookie') || '');
-const sid = cookies['sid'];
-if (!sid) return redirectToLogin(url);
+```python
+# 1. Проверка cookie sid
+sid = request.cookies.get("sid")
+if not sid:
+    return _deny(request)
 
-// 2. Проверка сессии в БД
-const session = await db
-  .prepare('SELECT email, expires_at FROM sessions WHERE session_id = ?')
-  .bind(sid)
-  .first();
+# 2. Проверка сессии в БД
+async with pool.acquire() as conn:
+    row = await conn.fetchrow(
+        "SELECT email, expires_at FROM sessions WHERE session_id = $1", sid
+    )
 
-// 3. Проверка срока действия
-const now = Math.floor(Date.now() / 1000);
-if (!session || session.expires_at < now) {
-  return redirectToLogin(url);
-}
+# 3. Проверка срока действия
+if not row or row["expires_at"] < int(time.time()):
+    return _deny(request)
 
-// 4. Разрешить доступ
-return await ctx.next();
+# 4. Разрешить доступ
+return await call_next(request)
 ```
+
+**Поведение `_deny()`:**
+- Для API-запросов (`/api/*`) — возвращает `401 JSON {"error": "unauthorized"}`
+- Для HTML-страниц — редирект на `/login.html?next=...`
 
 ---
 
@@ -182,19 +170,19 @@ return await ctx.next();
 
 **Процесс:**
 1. Удаляется сессия из БД
-2. Очищаются cookies `sid` и `u` (устанавливаются в `deleted` с `Max-Age=0`)
+2. Очищаются cookies `sid` и `u`
 3. Пользователь перенаправляется на страницу входа
 
-**Код:**
-```javascript
-// Удаление сессии из БД
-if (sid) {
-  await db.prepare("DELETE FROM sessions WHERE session_id=?").bind(sid).run();
-}
+**Код (Python):**
+```python
+sid = request.cookies.get("sid")
+if sid:
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM sessions WHERE session_id = $1", sid)
 
-// Очистка cookies
-headers.append('Set-Cookie', 'sid=deleted; Path=/; Max-Age=0; HttpOnly; SameSite=Lax');
-headers.append('Set-Cookie', 'u=deleted; Path=/; Max-Age=0; SameSite=Lax');
+resp = JSONResponse({"ok": True})
+resp.delete_cookie("sid", path="/")
+resp.delete_cookie("u", path="/")
 ```
 
 ---
@@ -205,7 +193,7 @@ headers.append('Set-Cookie', 'u=deleted; Path=/; Max-Age=0; SameSite=Lax');
 
 1. **Brute Force:**
    - Код действителен только 10 минут
-   - После использования код не удаляется (можно добавить флаг `used`)
+   - 6-значный код даёт 900000 вариантов
 
 2. **CSRF:**
    - `SameSite=Lax` защищает от межсайтовых запросов
@@ -215,29 +203,32 @@ headers.append('Set-Cookie', 'u=deleted; Path=/; Max-Age=0; SameSite=Lax');
    - Cookie `sid` недоступен из JavaScript (`HttpOnly`)
    - Данные экранируются при выводе (`esc()` функция)
 
-4. **Session Hijacking:**
-   - Cookie `sid` передается только через HTTPS (`Secure`)
+4. **SQL Injection:**
+   - Все запросы параметризованные (`$1`, `$2`, ...)
+   - asyncpg не допускает конкатенацию строк в запросах
+
+5. **Session Hijacking:**
    - Сессия имеет срок действия (7 дней)
+   - `session_id` генерируется криптографически безопасным `secrets.token_hex(32)`
 
 ### Рекомендации по улучшению
 
 1. **Rate Limiting:** Ограничить количество запросов кода с одного IP
 2. **IP Tracking:** Сохранять IP адрес при создании сессии
-3. **Device Fingerprinting:** Отслеживать устройства пользователя
-4. **2FA:** Добавить двухфакторную аутентификацию
-5. **Session Rotation:** Обновлять `session_id` при критических операциях
+3. **Secure cookies:** Добавить флаг `Secure` при работе через HTTPS
+4. **Session Rotation:** Обновлять `session_id` при критических операциях
 
 ---
 
 ## Демо-режим
 
-Для разработки и тестирования можно включить демо-режим:
+Для разработки и тестирования включён демо-режим:
 
 **Переменная окружения:** `DEV_DELIVERY=true`
 
 **Поведение:**
 - Email не отправляется реально
-- Код выводится в консоль (Cloudflare Logs)
+- Код выводится в лог Python (`logging.info`)
 - Код возвращается в ответе API (`demo_code`)
 
 **Пример ответа:**
@@ -257,11 +248,11 @@ headers.append('Set-Cookie', 'u=deleted; Path=/; Max-Age=0; SameSite=Lax');
 ```javascript
 const res = await apiRequest('auth-send', 'POST', '/api/auth/request-code', {
   email: 'user@example.com',
-  name: 'Иван Иванов' // опционально
+  name: 'Иван Иванов'
 });
 
 if (res.demo_code) {
-  codeInput.value = res.demo_code; // Автозаполнение в демо-режиме
+  codeInput.value = res.demo_code;
 }
 ```
 
@@ -279,29 +270,31 @@ if (res.ok) {
 }
 ```
 
-### Backend: Проверка сессии
+### Backend: Проверка сессии (Python)
 
-```javascript
-async function getCurrentUser(ctx) {
-  const cookies = parseCookie(ctx.request.headers.get('cookie') || '');
-  const sid = cookies['sid'];
-  if (!sid) return null;
+```python
+async def _get_current_user(request: Request) -> dict | None:
+    sid = request.cookies.get("sid")
+    if not sid:
+        return None
 
-  const session = await ctx.env.edu_rppa_db
-    .prepare('SELECT email, expires_at FROM sessions WHERE session_id = ?')
-    .bind(sid)
-    .first();
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        session = await conn.fetchrow(
+            "SELECT email, expires_at FROM sessions WHERE session_id = $1", sid
+        )
 
-  const now = Math.floor(Date.now() / 1000);
-  if (!session || session.expires_at < now) return null;
+    if not session or session["expires_at"] < int(time.time()):
+        return None
 
-  const user = await ctx.env.edu_rppa_db
-    .prepare('SELECT id, name FROM users WHERE email = ? LIMIT 1')
-    .bind(session.email)
-    .first();
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow(
+            "SELECT id, name FROM users WHERE email = $1", session["email"]
+        )
+    if not user:
+        return None
 
-  return user ? { user_id: user.id, email: session.email, name: user.name } : null;
-}
+    return {"user_id": user["id"], "email": session["email"], "name": user["name"]}
 ```
 
 ---
@@ -313,9 +306,9 @@ async function getCurrentUser(ctx) {
     │
     ├─→ [Ввод email] ──→ POST /api/auth/request-code
     │                        │
-    │                        ├─→ Генерация кода
-    │                        ├─→ Хеширование (SHA-256)
-    │                        ├─→ Сохранение в БД
+    │                        ├─→ Генерация кода (secrets.randbelow)
+    │                        ├─→ Хеширование (hashlib.sha256)
+    │                        ├─→ Сохранение в PostgreSQL
     │                        └─→ Отправка email / возврат demo_code
     │
     ├─→ [Ввод кода] ────→ POST /api/auth/verify-code
@@ -323,14 +316,13 @@ async function getCurrentUser(ctx) {
     │                        ├─→ Хеширование кода
     │                        ├─→ Поиск в БД
     │                        ├─→ Проверка срока действия
-    │                        ├─→ Создание сессии
+    │                        ├─→ Создание сессии (secrets.token_hex)
     │                        └─→ Установка cookies (sid, u)
     │
     └─→ [Доступ к защищенным страницам]
                               │
-                              ├─→ Middleware проверяет cookie sid
-                              ├─→ Проверка сессии в БД
+                              ├─→ AuthMiddleware проверяет cookie sid
+                              ├─→ Проверка сессии в PostgreSQL
                               ├─→ Проверка срока действия
-                              └─→ Разрешение доступа или редирект на /login
+                              └─→ Доступ разрешен или редирект на /login
 ```
-

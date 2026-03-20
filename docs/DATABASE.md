@@ -1,8 +1,8 @@
 # Схема базы данных
 
-Проект использует **Cloudflare D1** (SQLite) для хранения данных.
+Проект использует **PostgreSQL 16** для хранения данных.
 
-## База данных: `edu_rppa_db`
+## База данных: `edu_rppa`
 
 ---
 
@@ -16,18 +16,20 @@
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `id` | INTEGER | Первичный ключ (генерируется как `Date.now()`) |
+| `id` | BIGSERIAL | Первичный ключ (автоинкремент) |
 | `name` | TEXT | Имя пользователя |
 | `email` | TEXT | Email (уникальный) |
-| `created_at` | TEXT | ISO дата создания |
+| `created_at` | TIMESTAMPTZ | Дата создания (DEFAULT NOW()) |
 
-**Индексы:**
-- `UNIQUE(email)` - Email должен быть уникальным
+**Ограничения:**
+- `PRIMARY KEY (id)` — уникальный автоинкрементный идентификатор
+- `UNIQUE (email)` — email должен быть уникальным
+- `NOT NULL` на name, email, created_at
 
 **Пример записи:**
 ```sql
-INSERT INTO users (id, name, email, created_at) 
-VALUES (1234567890, 'Иван Иванов', 'ivan@example.com', '2024-01-15T10:30:00.000Z');
+INSERT INTO users (name, email) VALUES ('Иван Иванов', 'ivan@example.com');
+-- id и created_at заполняются автоматически
 ```
 
 ---
@@ -40,16 +42,19 @@ VALUES (1234567890, 'Иван Иванов', 'ivan@example.com', '2024-01-15T10:
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `id` | INTEGER | Первичный ключ (генерируется как `Date.now()`) |
+| `id` | BIGSERIAL | Первичный ключ (автоинкремент) |
 | `name` | TEXT | Название товара |
 | `description` | TEXT | Описание товара |
 | `price_cents` | INTEGER | Цена в центах (неотрицательное целое) |
 | `image_url` | TEXT | URL изображения (может быть NULL) |
 
+**Ограничения:**
+- `CHECK (price_cents >= 0)` — цена не может быть отрицательной
+
 **Пример записи:**
 ```sql
-INSERT INTO products (id, name, description, price_cents, image_url) 
-VALUES (1234567890, 'Товар', 'Описание товара', 9999, 'https://example.com/image.jpg');
+INSERT INTO products (name, description, price_cents, image_url)
+VALUES ('Товар', 'Описание товара', 9999, 'https://example.com/image.jpg');
 ```
 
 ---
@@ -62,22 +67,25 @@ VALUES (1234567890, 'Товар', 'Описание товара', 9999, 'https:
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `id` | INTEGER | Первичный ключ (генерируется как `Date.now()`) |
-| `user_id` | INTEGER | ID пользователя (внешний ключ на users.id) |
-| `items_json` | TEXT | JSON строка с позициями заказа |
+| `id` | BIGSERIAL | Первичный ключ (автоинкремент) |
+| `user_id` | BIGINT | ID пользователя (внешний ключ на users.id) |
+| `items_json` | JSONB | Позиции заказа в формате JSON |
 | `total_cents` | INTEGER | Итоговая сумма в центах |
-| `created_at` | TEXT | ISO дата создания |
+| `created_at` | TIMESTAMPTZ | Дата создания (DEFAULT NOW()) |
 
-**Формат `items_json`:**
+**Ограничения:**
+- `REFERENCES users(id) ON DELETE CASCADE` — при удалении пользователя удаляются его заказы
+
+**Формат `items_json` (JSONB):**
 ```json
 {
-  "1234567890": {
+  "1": {
     "qty": 2,
     "price_cents": 9999,
     "line_total_cents": 19998,
     "name": "Название товара"
   },
-  "1234567891": {
+  "2": {
     "qty": 1,
     "price_cents": 4999,
     "line_total_cents": 4999,
@@ -88,13 +96,11 @@ VALUES (1234567890, 'Товар', 'Описание товара', 9999, 'https:
 
 **Пример записи:**
 ```sql
-INSERT INTO orders (id, user_id, items_json, total_cents, created_at) 
+INSERT INTO orders (user_id, items_json, total_cents)
 VALUES (
-  1234567890, 
-  1234567890, 
-  '{"1234567890":{"qty":2,"price_cents":9999,"line_total_cents":19998,"name":"Товар"}}',
-  19998,
-  '2024-01-15T10:30:00.000Z'
+  1,
+  '{"1":{"qty":2,"price_cents":9999,"line_total_cents":19998,"name":"Товар"}}'::jsonb,
+  19998
 );
 ```
 
@@ -108,10 +114,10 @@ VALUES (
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `session_id` | TEXT | Уникальный ID сессии (32 символа hex) |
+| `session_id` | TEXT | Уникальный ID сессии (64 символа hex) |
 | `email` | TEXT | Email пользователя |
-| `expires_at` | INTEGER | Unix timestamp истечения сессии |
-| `created_at` | INTEGER | Unix timestamp создания сессии |
+| `expires_at` | BIGINT | Unix timestamp истечения сессии |
+| `created_at` | BIGINT | Unix timestamp создания сессии |
 
 **Особенности:**
 - Сессия действует 7 дней (604800 секунд)
@@ -120,11 +126,11 @@ VALUES (
 
 **Пример записи:**
 ```sql
-INSERT INTO sessions (session_id, email, expires_at, created_at) 
+INSERT INTO sessions (session_id, email, expires_at, created_at)
 VALUES (
-  'a1b2c3d4e5f6...',
+  'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
   'user@example.com',
-  1705320000, -- Unix timestamp
+  1705320000,
   1704715200
 );
 ```
@@ -139,75 +145,63 @@ VALUES (
 
 | Поле | Тип | Описание |
 |------|-----|----------|
+| `id` | BIGSERIAL | Первичный ключ (автоинкремент) |
 | `email` | TEXT | Email пользователя |
 | `code_hash` | TEXT | SHA-256 хеш кода (64 символа hex) |
-| `expires_at` | INTEGER | Unix timestamp истечения кода |
-| `created_at` | INTEGER | Unix timestamp создания кода |
+| `expires_at` | BIGINT | Unix timestamp истечения кода |
+| `created_at` | BIGINT | Unix timestamp создания кода |
 
 **Особенности:**
 - Код действителен 10 минут (600 секунд)
 - Код хранится как SHA-256 хеш (не в открытом виде)
-- Код генерируется как 6-значное число (100000-999999)
+- Код генерируется как 6-значное число (100000–999999)
 - При проверке используется последний созданный код для email
-
-**Пример записи:**
-```sql
-INSERT INTO auth_codes (email, code_hash, expires_at, created_at) 
-VALUES (
-  'user@example.com',
-  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', -- SHA-256 хеш
-  1704715800, -- expires_at (now + 10 min)
-  1704715200  -- created_at (now)
-);
-```
 
 ---
 
-## SQL запросы для создания таблиц
+## SQL-схема (schema.sql)
 
 ```sql
--- Таблица пользователей
 CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT NOT NULL UNIQUE,
-  created_at TEXT NOT NULL
+    id          BIGSERIAL    PRIMARY KEY,
+    name        TEXT         NOT NULL,
+    email       TEXT         UNIQUE NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- Таблица товаров
 CREATE TABLE IF NOT EXISTS products (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  description TEXT NOT NULL,
-  price_cents INTEGER NOT NULL CHECK(price_cents >= 0),
-  image_url TEXT
+    id          BIGSERIAL    PRIMARY KEY,
+    name        TEXT         NOT NULL,
+    description TEXT         NOT NULL DEFAULT '',
+    price_cents INTEGER      NOT NULL CHECK (price_cents >= 0),
+    image_url   TEXT
 );
 
--- Таблица заказов
 CREATE TABLE IF NOT EXISTS orders (
-  id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  items_json TEXT NOT NULL,
-  total_cents INTEGER NOT NULL CHECK(total_cents >= 0),
-  created_at TEXT NOT NULL
+    id          BIGSERIAL    PRIMARY KEY,
+    user_id     BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    items_json  JSONB        NOT NULL,
+    total_cents INTEGER      NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- Таблица сессий
 CREATE TABLE IF NOT EXISTS sessions (
-  session_id TEXT PRIMARY KEY,
-  email TEXT NOT NULL,
-  expires_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL
+    session_id  TEXT   PRIMARY KEY,
+    email       TEXT   NOT NULL,
+    expires_at  BIGINT NOT NULL,
+    created_at  BIGINT NOT NULL
 );
 
--- Таблица кодов аутентификации
 CREATE TABLE IF NOT EXISTS auth_codes (
-  email TEXT NOT NULL,
-  code_hash TEXT NOT NULL,
-  expires_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL
+    id          BIGSERIAL PRIMARY KEY,
+    email       TEXT      NOT NULL,
+    code_hash   TEXT      NOT NULL,
+    expires_at  BIGINT    NOT NULL,
+    created_at  BIGINT    NOT NULL
 );
 ```
+
+Таблицы создаются автоматически при старте сервера (`backend/db.py` выполняет `schema.sql` с `IF NOT EXISTS`).
 
 ---
 
@@ -215,54 +209,47 @@ CREATE TABLE IF NOT EXISTS auth_codes (
 
 ```
 users (id)
-  └── orders.user_id → users.id
-  └── sessions.email → users.email
-  └── auth_codes.email → users.email
+  └── orders.user_id → users.id (ON DELETE CASCADE)
+  └── sessions.email → users.email (логическая связь)
+  └── auth_codes.email → users.email (логическая связь)
 ```
 
-**Примечание:** В SQLite нет внешних ключей по умолчанию, связи логические.
-
----
-
-## Индексы (рекомендуемые)
-
-Для оптимизации запросов можно добавить индексы:
-
-```sql
--- Индекс для поиска пользователя по email
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-
--- Индекс для поиска заказов пользователя
-CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
-
--- Индекс для поиска сессии
-CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
-
--- Индекс для поиска кодов по email
-CREATE INDEX IF NOT EXISTS idx_auth_codes_email ON auth_codes(email);
-```
+В PostgreSQL внешний ключ `orders.user_id → users.id` задан явно с каскадным удалением.
 
 ---
 
 ## Особенности реализации
 
-1. **ID генерация**: Используется `Date.now()` для генерации ID (timestamp в миллисекундах)
-2. **Даты**: 
-   - ISO формат для `created_at` в users, products, orders
-   - Unix timestamp для sessions и auth_codes
-3. **Хеширование**: SHA-256 для кодов аутентификации
-4. **JSON хранение**: `items_json` хранит структурированные данные заказа
-5. **Валидация**: Проверка на уровне приложения (не на уровне БД)
+1. **ID генерация**: `BIGSERIAL` — автоинкремент PostgreSQL
+2. **Даты**:
+   - `TIMESTAMPTZ` с `DEFAULT NOW()` для `created_at` в users, products, orders
+   - Unix timestamp (BIGINT) для sessions и auth_codes
+3. **Хеширование**: SHA-256 для кодов аутентификации (`hashlib.sha256`)
+4. **JSON хранение**: `JSONB` для `items_json` в orders (поддержка индексирования и запросов)
+5. **Валидация**: `CHECK` ограничения на уровне БД + проверки в Python-коде
 
 ---
 
-## Миграции
+## Полезные запросы
 
-В текущей версии миграции выполняются вручную через Cloudflare Dashboard или Wrangler CLI.
+```sql
+-- Все пользователи
+SELECT * FROM users ORDER BY id DESC;
 
-Пример команды для создания таблиц через Wrangler:
+-- Все товары
+SELECT * FROM products ORDER BY id DESC;
 
-```bash
-wrangler d1 execute edu_rppa_db --file=./schema.sql
+-- Заказы с именем покупателя
+SELECT o.id, u.name, u.email, o.total_cents, o.created_at
+FROM orders o
+JOIN users u ON u.id = o.user_id
+ORDER BY o.created_at DESC;
+
+-- Активные сессии
+SELECT session_id, email, to_timestamp(expires_at) AS expires
+FROM sessions
+WHERE expires_at > extract(epoch FROM now());
+
+-- Очистить все данные
+TRUNCATE auth_codes, sessions, orders, products, users RESTART IDENTITY CASCADE;
 ```
-

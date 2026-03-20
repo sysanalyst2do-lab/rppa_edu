@@ -9,9 +9,9 @@
 ## Технологии
 
 - **Frontend**: HTML, CSS, Vanilla JavaScript
-- **Backend**: Cloudflare Pages Functions (Serverless)
-- **База данных**: Cloudflare D1 (SQLite)
-- **Хостинг**: Cloudflare Pages
+- **Backend**: Python 3.12, FastAPI (асинхронный ASGI-фреймворк)
+- **База данных**: PostgreSQL 16
+- **Библиотеки**: asyncpg, httpx, python-dotenv, uvicorn
 - **Аутентификация**: Email-код (OTP)
 
 ---
@@ -45,24 +45,28 @@
 
 ```
 rppa_edu/
-├── functions/          # Серверная логика
-│   ├── _middleware.js  # Проверка аутентификации
-│   ├── _lib/          # Вспомогательные библиотеки
-│   └── api/           # API эндпоинты
-│       ├── auth/      # Аутентификация
-│       ├── users.js   # Пользователи
-│       ├── products.js # Товары
-│       └── orders.js  # Заказы
+├── backend/               # Серверная логика (Python / FastAPI)
+│   ├── app.py             # Точка входа, middleware, статика
+│   ├── db.py              # Пул подключений asyncpg
+│   ├── mailer.py          # Отправка email
+│   └── routes/            # API эндпоинты
+│       ├── auth.py        # Аутентификация
+│       ├── users.py       # Пользователи
+│       ├── products.py    # Товары
+│       └── orders.py      # Заказы
 │
-├── public/            # Frontend
-│   ├── assets/       # CSS, JS, изображения
-│   ├── index.html    # Главная
-│   ├── login.html    # Вход
-│   ├── users/        # Управление пользователями
-│   ├── products/     # Управление товарами
-│   └── orders/       # Создание заказов
+├── public/                # Frontend
+│   ├── assets/            # CSS, JS, изображения
+│   ├── index.html         # Главная
+│   ├── login.html         # Вход
+│   ├── users/             # Управление пользователями
+│   ├── products/          # Управление товарами
+│   └── orders/            # Создание заказов
 │
-└── docs/             # Документация
+├── docs/                  # Документация
+├── schema.sql             # DDL для PostgreSQL
+├── requirements.txt       # Python-зависимости
+└── .env.example           # Шаблон переменных окружения
 ```
 
 ---
@@ -70,26 +74,26 @@ rppa_edu/
 ## API эндпоинты
 
 ### Аутентификация
-- `POST /api/auth/request-code` - Запрос кода
-- `POST /api/auth/verify-code` - Верификация кода
-- `POST /api/auth/logout` - Выход
+- `POST /api/auth/request-code` — Запрос кода
+- `POST /api/auth/verify-code` — Верификация кода
+- `POST /api/auth/logout` — Выход
 
 ### Пользователи
-- `GET /api/users` - Список
-- `GET /api/users?id=123` - По ID
-- `POST /api/users` - Создать
-- `PUT /api/users` - Обновить
-- `DELETE /api/users?id=123` - Удалить
+- `GET /api/users` — Список
+- `GET /api/users?id=123` — По ID
+- `POST /api/users` — Создать
+- `PUT /api/users` — Обновить
+- `DELETE /api/users?id=123` — Удалить
 
 ### Товары
-- `GET /api/products` - Список
-- `GET /api/products?id=123` - По ID
-- `POST /api/products` - Создать
-- `PUT /api/products` - Обновить
-- `DELETE /api/products?id=123` - Удалить
+- `GET /api/products` — Список
+- `GET /api/products?id=123` — По ID
+- `POST /api/products` — Создать
+- `PUT /api/products` — Обновить
+- `DELETE /api/products?id=123` — Удалить
 
 ### Заказы
-- `POST /api/orders` - Создать (требует аутентификации)
+- `POST /api/orders` — Создать (требует аутентификации)
 
 ---
 
@@ -97,35 +101,35 @@ rppa_edu/
 
 ### Таблицы
 
-1. **users** - Пользователи (id, name, email, created_at)
-2. **products** - Товары (id, name, description, price_cents, image_url)
-3. **orders** - Заказы (id, user_id, items_json, total_cents, created_at)
-4. **sessions** - Сессии (session_id, email, expires_at, created_at)
-5. **auth_codes** - Коды входа (email, code_hash, expires_at, created_at)
+1. **users** — Пользователи (id, name, email, created_at)
+2. **products** — Товары (id, name, description, price_cents, image_url)
+3. **orders** — Заказы (id, user_id, items_json, total_cents, created_at)
+4. **sessions** — Сессии (session_id, email, expires_at, created_at)
+5. **auth_codes** — Коды входа (id, email, code_hash, expires_at, created_at)
 
 ---
 
 ## Ключевые особенности
 
 ### Безопасность
-- ✅ HttpOnly cookies для сессий
-- ✅ Secure cookies (только HTTPS)
-- ✅ SameSite защита от CSRF
-- ✅ Хеширование кодов (SHA-256)
-- ✅ Валидация данных на сервере
+- HttpOnly cookies для сессий
+- SameSite защита от CSRF
+- Хеширование кодов (SHA-256)
+- Валидация данных на сервере
+- Параметризованные SQL-запросы (защита от SQL-инъекций)
 
-### Производительность
-- ✅ Serverless архитектура (масштабируемость)
-- ✅ Кэширование данных на клиенте
-- ✅ Логирование времени выполнения
-- ✅ Оптимизированные SQL запросы
+### Архитектура
+- Асинхронный сервер (FastAPI + uvicorn)
+- Пул подключений к БД (asyncpg, 2–10 соединений)
+- Автоматическое создание таблиц при старте (из `schema.sql`)
+- Разделение на модули: routes, db, mailer
 
 ### UX
-- ✅ Адаптивный дизайн
-- ✅ Индикаторы загрузки
-- ✅ Уведомления (toast)
-- ✅ Автозаполнение в демо-режиме
-- ✅ Темная тема
+- Адаптивный дизайн
+- Индикаторы загрузки
+- Уведомления (toast)
+- Автозаполнение в демо-режиме
+- Темная тема
 
 ---
 
@@ -133,23 +137,23 @@ rppa_edu/
 
 ### 1. Вход
 ```
-Пользователь → Ввод email → Запрос кода → 
-Получение кода → Ввод кода → Создание сессии → 
+Пользователь → Ввод email → Запрос кода →
+Получение кода → Ввод кода → Создание сессии →
 Установка cookies → Доступ к приложению
 ```
 
 ### 2. Создание заказа
 ```
-Выбор товаров → Добавление в корзину → 
-Расчет суммы → Формирование payload → 
-Отправка на API → Валидация → Сохранение в БД → 
+Выбор товаров → Добавление в корзину →
+Расчет суммы → Формирование payload →
+Отправка на API → Валидация → Сохранение в БД →
 Отображение квитанции
 ```
 
 ### 3. Защита маршрутов
 ```
-Запрос → Middleware → Проверка cookie sid → 
-Проверка сессии в БД → Проверка срока действия → 
+Запрос → Middleware → Проверка cookie sid →
+Проверка сессии в БД → Проверка срока действия →
 Доступ разрешен или редирект на /login
 ```
 
@@ -159,22 +163,25 @@ rppa_edu/
 
 Полная документация находится в папке `docs/`:
 
-- **[README.md](./README.md)** - Общая документация
-- **[API.md](./API.md)** - Детальное описание API
-- **[DATABASE.md](./DATABASE.md)** - Схема базы данных
-- **[AUTHENTICATION.md](./AUTHENTICATION.md)** - Система аутентификации
-- **[FRONTEND.md](./FRONTEND.md)** - Frontend структура
-- **[EXAMPLES.md](./EXAMPLES.md)** - Примеры использования
+- **[README.md](./README.md)** — Общая документация
+- **[API.md](./API.md)** — Детальное описание API
+- **[DATABASE.md](./DATABASE.md)** — Схема базы данных
+- **[AUTHENTICATION.md](./AUTHENTICATION.md)** — Система аутентификации
+- **[FRONTEND.md](./FRONTEND.md)** — Frontend структура
+- **[EXAMPLES.md](./EXAMPLES.md)** — Примеры использования
+- **[LOCAL_SETUP.md](./LOCAL_SETUP.md)** — Локальная работа и развёртывание
 
 ---
 
 ## Быстрый старт
 
-1. **Клонировать репозиторий**
-2. **Настроить Cloudflare D1 базу данных**
-3. **Создать таблицы** (см. DATABASE.md)
-4. **Настроить переменные окружения**
-5. **Деплой на Cloudflare Pages**
+1. Установить зависимости: `pip install --user -r requirements.txt`
+2. Создать базу данных PostgreSQL: `createdb -U postgres edu_rppa`
+3. Скопировать `.env.example` в `.env` и прописать `DATABASE_URL`
+4. Запустить: `python -m uvicorn backend.app:app --reload`
+5. Открыть http://127.0.0.1:8000
+
+Подробнее — в [LOCAL_SETUP.md](./LOCAL_SETUP.md).
 
 ---
 
@@ -187,23 +194,16 @@ rppa_edu/
 - Email отправка только в демо-режиме
 
 ### Возможные улучшения
-- ✅ Добавить rate limiting
-- ✅ Сохранение корзины в localStorage
-- ✅ Пагинация и виртуализация списков
-- ✅ Интеграция с реальным email сервисом
-- ✅ Добавить тесты
-- ✅ Добавить CI/CD
-- ✅ Добавить мониторинг и аналитику
+- Добавить rate limiting
+- Сохранение корзины в localStorage
+- Пагинация и виртуализация списков
+- Интеграция с реальным email сервисом
+- Добавить тесты
+- Добавить CI/CD
+- Добавить мониторинг и аналитику
 
 ---
 
 ## Лицензия
 
 Образовательный проект для демонстрации архитектуры веб-приложений.
-
----
-
-## Контакты
-
-Для вопросов и предложений обращайтесь к разработчикам проекта.
-

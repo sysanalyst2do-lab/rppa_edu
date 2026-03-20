@@ -20,19 +20,19 @@
 ### Технологический стек
 
 - **Frontend**: HTML, CSS, Vanilla JavaScript
-- **Backend**: Cloudflare Pages Functions (Serverless Functions)
-- **База данных**: Cloudflare D1 (SQLite)
-- **Хостинг**: Cloudflare Pages
+- **Backend**: Python 3.12, FastAPI (асинхронный ASGI-фреймворк)
+- **База данных**: PostgreSQL 16
+- **Библиотеки**: asyncpg, httpx, python-dotenv, uvicorn
 - **Аутентификация**: Email-код (OTP)
 
 ### Основные возможности
 
-- ✅ Управление пользователями (CRUD)
-- ✅ Управление товарами (CRUD)
-- ✅ Создание заказов с корзиной покупок
-- ✅ Аутентификация через одноразовый email-код
-- ✅ Защита маршрутов через middleware
-- ✅ Сессии на основе cookies
+- Управление пользователями (CRUD)
+- Управление товарами (CRUD)
+- Создание заказов с корзиной покупок
+- Аутентификация через одноразовый email-код
+- Защита маршрутов через middleware
+- Сессии на основе cookies
 
 ---
 
@@ -47,30 +47,25 @@
        │ HTTP Requests
        ↓
 ┌──────────────────────┐
-│  Cloudflare Pages    │ ← Статические файлы
+│  FastAPI (uvicorn)   │ ← Python-сервер: API + статика
+│  (backend/app.py)    │
 └──────┬───────────────┘
        │
        ↓
 ┌──────────────────────┐
-│  Cloudflare Functions│ ← Серверная логика (API)
-│  (_middleware.js)    │
-└──────┬───────────────┘
-       │
-       ↓
-┌──────────────────────┐
-│   Cloudflare D1      │ ← База данных (SQLite)
-│   (edu_rppa_db)      │
+│   PostgreSQL 16      │ ← База данных
+│   (edu_rppa)         │
 └──────────────────────┘
 ```
 
 ### Поток данных
 
 1. **Пользователь** открывает страницу в браузере
-2. **Cloudflare Pages** отдает статические файлы (HTML/CSS/JS)
+2. **FastAPI** отдает статические файлы (HTML/CSS/JS) из папки `public/`
 3. **Frontend** делает запросы к API через `fetch()`
 4. **Middleware** проверяет аутентификацию для защищенных маршрутов
-5. **Functions** обрабатывают запросы и взаимодействуют с БД
-6. **D1 Database** хранит данные (users, products, orders, sessions, auth_codes)
+5. **Route-обработчики** обрабатывают запросы и взаимодействуют с БД через `asyncpg`
+6. **PostgreSQL** хранит данные (users, products, orders, sessions, auth_codes)
 
 ---
 
@@ -78,21 +73,19 @@
 
 ```
 rppa_edu/
-├── functions/              # Серверная логика (Cloudflare Functions)
-│   ├── _middleware.js      # Middleware для проверки аутентификации
-│   ├── _lib/               # Вспомогательные библиотеки
-│   │   ├── logger.js       # Логирование запросов
-│   │   └── mailer.js       # Отправка email (демо-режим)
-│   └── api/                # API эндпоинты
-│       ├── auth/           # Аутентификация
-│       │   ├── request-code.js  # Запрос кода на email
-│       │   ├── verify-code.js   # Проверка кода и создание сессии
-│       │   └── logout.js        # Выход из системы
-│       ├── users.js        # CRUD пользователей
-│       ├── products.js     # CRUD товаров
-│       └── orders.js       # Создание заказов
+├── backend/               # Серверная логика (Python / FastAPI)
+│   ├── __init__.py
+│   ├── app.py             # Точка входа, middleware, монтирование статики
+│   ├── db.py              # Пул подключений asyncpg + автосоздание таблиц
+│   ├── mailer.py          # Отправка email (демо-режим / Resend API)
+│   └── routes/            # API эндпоинты
+│       ├── __init__.py
+│       ├── auth.py        # Запрос кода, верификация, logout
+│       ├── users.py       # CRUD пользователей
+│       ├── products.py    # CRUD товаров
+│       └── orders.py      # Создание заказов
 │
-├── public/                 # Статические файлы (Frontend)
+├── public/                # Статические файлы (Frontend)
 │   ├── assets/
 │   │   ├── app.css        # Основные стили
 │   │   ├── app.js         # Общие JS функции
@@ -106,11 +99,20 @@ rppa_edu/
 │   └── orders/
 │       └── index.html     # Создание заказов
 │
-└── docs/                  # Документация (эта папка)
-    ├── README.md          # Общая документация
-    ├── API.md             # Детальное описание API
-    ├── DATABASE.md        # Схема базы данных
-    └── AUTHENTICATION.md  # Система аутентификации
+├── docs/                  # Документация (эта папка)
+│   ├── README.md          # Общая документация
+│   ├── SUMMARY.md         # Краткое резюме
+│   ├── API.md             # Детальное описание API
+│   ├── DATABASE.md        # Схема базы данных
+│   ├── AUTHENTICATION.md  # Система аутентификации
+│   ├── FRONTEND.md        # Frontend структура
+│   ├── EXAMPLES.md        # Примеры использования
+│   └── LOCAL_SETUP.md     # Локальная работа и развёртывание
+│
+├── schema.sql             # DDL для PostgreSQL
+├── requirements.txt       # Python-зависимости
+├── .env.example           # Шаблон переменных окружения
+└── .env                   # Локальные настройки (не в Git)
 ```
 
 ---
@@ -177,26 +179,26 @@ rppa_edu/
 ### Краткий обзор
 
 #### Аутентификация
-- `POST /api/auth/request-code` - Запрос кода на email
-- `POST /api/auth/verify-code` - Проверка кода и вход
-- `POST /api/auth/logout` - Выход из системы
+- `POST /api/auth/request-code` — Запрос кода на email
+- `POST /api/auth/verify-code` — Проверка кода и вход
+- `POST /api/auth/logout` — Выход из системы
 
 #### Пользователи
-- `GET /api/users` - Список пользователей
-- `GET /api/users?id=123` - Получить пользователя по ID
-- `POST /api/users` - Создать пользователя
-- `PUT /api/users` - Обновить пользователя
-- `DELETE /api/users?id=123` - Удалить пользователя
+- `GET /api/users` — Список пользователей
+- `GET /api/users?id=123` — Получить пользователя по ID
+- `POST /api/users` — Создать пользователя
+- `PUT /api/users` — Обновить пользователя
+- `DELETE /api/users?id=123` — Удалить пользователя
 
 #### Товары
-- `GET /api/products` - Список товаров
-- `GET /api/products?id=123` - Получить товар по ID
-- `POST /api/products` - Создать товар
-- `PUT /api/products` - Обновить товар
-- `DELETE /api/products?id=123` - Удалить товар
+- `GET /api/products` — Список товаров
+- `GET /api/products?id=123` — Получить товар по ID
+- `POST /api/products` — Создать товар
+- `PUT /api/products` — Обновить товар
+- `DELETE /api/products?id=123` — Удалить товар
 
 #### Заказы
-- `POST /api/orders` - Создать заказ (требует аутентификации)
+- `POST /api/orders` — Создать заказ (требует аутентификации)
 
 ---
 
@@ -206,11 +208,11 @@ rppa_edu/
 
 ### Таблицы
 
-1. **users** - Пользователи
-2. **products** - Товары
-3. **orders** - Заказы
-4. **sessions** - Сессии пользователей
-5. **auth_codes** - Коды для входа
+1. **users** — Пользователи
+2. **products** — Товары
+3. **orders** — Заказы
+4. **sessions** — Сессии пользователей
+5. **auth_codes** — Коды для входа
 
 ---
 
@@ -238,34 +240,32 @@ rppa_edu/
 
 ### Общие компоненты
 
-- **Topbar** - Верхняя панель навигации
-- **Sidebar** - Боковая панель для CRUD операций
-- **Loader** - Индикатор загрузки
-- **Toasts** - Уведомления (успех/ошибка)
+- **Topbar** — Верхняя панель навигации
+- **Sidebar** — Боковая панель для CRUD операций
+- **Loader** — Индикатор загрузки
+- **Toasts** — Уведомления (успех/ошибка)
 
 ### JavaScript функции
 
-- `apiRequest()` - Обертка для HTTP запросов
-- `toast()` - Показ уведомлений
-- `initHashRouter()` - Роутинг на основе hash
-- `bindLogout()` - Обработчик выхода
-- `esc()` - Экранирование HTML
+- `apiRequest()` — Обертка для HTTP запросов
+- `toast()` — Показ уведомлений
+- `initHashRouter()` — Роутинг на основе hash
+- `bindLogout()` — Обработчик выхода
+- `esc()` — Экранирование HTML
 
 ### Страницы
 
-1. **index.html** - Главная страница с описанием проекта
-2. **login.html** - Страница входа
-3. **users/index.html** - Управление пользователями
-4. **products/index.html** - Управление товарами
-5. **orders/index.html** - Создание заказов
+1. **index.html** — Главная страница с описанием проекта
+2. **login.html** — Страница входа
+3. **users/index.html** — Управление пользователями
+4. **products/index.html** — Управление товарами
+5. **orders/index.html** — Создание заказов
 
 ---
 
 ## Дополнительная информация
 
-- Все запросы логируются в Cloudflare Real-time Logs
-- Время выполнения запросов отслеживается
-- Поддержка демо-режима для email (DEV_DELIVERY=true)
+- Все запросы логируются через стандартный `logging` Python
+- Поддержка демо-режима для email (`DEV_DELIVERY=true`)
 - Адаптивный дизайн для мобильных устройств
 - Темная тема оформления
-
