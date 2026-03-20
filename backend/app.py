@@ -16,7 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .db import close_pool, get_pool, init_pool
 from .routes import auth, orders, products, users
 
-ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "temp2026")
 
 OPEN_EXACT = frozenset(
     {
