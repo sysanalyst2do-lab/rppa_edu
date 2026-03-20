@@ -1,0 +1,57 @@
+Project edu_rppa {
+  database_type: 'PostgreSQL'
+  Note: '''
+    # edu_rppa Database Schema
+    Демонстрационное приложение для мастер-класса
+    по архитектуре информационных систем.
+    Связка Frontend ↔ FastAPI ↔ PostgreSQL.
+  '''
+}
+
+Table users {
+  id bigserial [pk, increment, note: 'Автоинкрементный ID']
+  name text [not null, note: 'Имя пользователя']
+  email text [unique, not null, note: 'Email (уникальный)']
+  created_at timestamptz [not null, default: `NOW()`, note: 'Дата регистрации']
+
+  Note: 'Пользователи системы. Создаются автоматически при первой авторизации.'
+}
+
+Table products {
+  id bigserial [pk, increment, note: 'Автоинкрементный ID']
+  name text [not null, note: 'Название товара']
+  description text [not null, default: '', note: 'Описание товара']
+  price_cents integer [not null, note: 'Цена в копейках (≥ 0)']
+  image_url text [null, note: 'URL изображения товара']
+
+  Note: 'Каталог товаров с ценами и описаниями.'
+}
+
+Table orders {
+  id bigserial [pk, increment, note: 'Автоинкрементный ID']
+  user_id bigint [not null, ref: > users.id, note: 'FK → users (ON DELETE CASCADE)']
+  items_json jsonb [not null, note: 'Содержимое заказа (product_id → qty, price, name)']
+  total_cents integer [not null, note: 'Итоговая сумма в копейках']
+  created_at timestamptz [not null, default: `NOW()`, note: 'Дата создания заказа']
+
+  Note: 'Заказы пользователей. items_json хранит снимок корзины на момент оформления.'
+}
+
+Table sessions {
+  session_id text [pk, note: 'Токен сессии (64-символьный hex)']
+  email text [not null, ref: > users.email, note: 'Email пользователя']
+  expires_at bigint [not null, note: 'Unix timestamp истечения (7 дней)']
+  created_at bigint [not null, note: 'Unix timestamp создания']
+
+  Note: 'Активные сессии. Создаются при verify-code, удаляются при logout.'
+}
+
+Table auth_codes {
+  id bigserial [pk, increment, note: 'Автоинкрементный ID']
+  email text [not null, ref: > users.email, note: 'Email получателя кода']
+  code_hash text [not null, note: 'SHA-256 хеш 6-значного кода']
+  expires_at bigint [not null, note: 'Unix timestamp истечения (10 минут)']
+  created_at bigint [not null, note: 'Unix timestamp создания']
+
+  Note: 'Одноразовые коды авторизации. Хранятся в виде хешей.'
+}
