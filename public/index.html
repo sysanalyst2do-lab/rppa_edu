@@ -13,19 +13,19 @@
     <!-- BASIC SEO -->
     <link rel="canonical" href="https://rppa-edu.pages.dev/">
     <meta name="title" content="edu_rppa — демонстрационное приложение">
-    <meta name="description" content="Frontend ↔ API ↔ Database на Cloudflare Pages + D1. Users, Products, Orders. Логин по email-коду.">
+    <meta name="description" content="Frontend ↔ API ↔ Database на Python (FastAPI) + PostgreSQL. Users, Products, Orders. Логин по email-коду.">
 
     <!-- OPEN GRAPH -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://rppa-edu.pages.dev/">
     <meta property="og:title" content="edu_rppa — демонстрационное приложение">
-    <meta property="og:description" content="Frontend ↔ API ↔ Database на Cloudflare Pages + D1. Users, Products, Orders.">
+    <meta property="og:description" content="Frontend ↔ API ↔ Database на Python (FastAPI) + PostgreSQL. Users, Products, Orders.">
     <meta property="og:image" content="https://rppa-edu.pages.dev/assets/og-image.png">
 
     <!-- TWITTER CARD -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="edu_rppa — демонстрационное приложение">
-    <meta name="twitter:description" content="Frontend ↔ API ↔ Database на Cloudflare Pages + D1. Users, Products, Orders.">
+    <meta name="twitter:description" content="Frontend ↔ API ↔ Database на Python (FastAPI) + PostgreSQL. Users, Products, Orders.">
     <meta name="twitter:image" content="https://rppa-edu.pages.dev/assets/og-image.png">
 
     <title>edu_rppa · Главная</title>
@@ -88,11 +88,11 @@
             <h2>О проекте edu_rppa</h2>
             <div class="desc">
                 <p><b>edu_rppa</b> — демонстрационное приложение для мастер-класса по архитектуре информационных систем.</p>
-                <p>Показывает связку <b>Frontend ↔ API ↔ Database</b> на базе Cloudflare Pages Functions и D1.</p>
+                <p>Показывает связку <b>Frontend ↔ API ↔ Database</b> на базе Python (FastAPI) и PostgreSQL.</p>
                 <p>Каждый раздел демонстрирует свой аспект:
                     <br>• <b>Users</b> — управление пользователями (CRUD, фильтрация).
                     <br>• <b>Products</b> — каталог товаров с ценами и ссылками на изображения.
-                    <br>• <b>Orders</b> — клиентская корзина, формирование JSON-пейлоада и сохранение заказа в D1.
+                    <br>• <b>Orders</b> — клиентская корзина, формирование JSON-пейлоада и сохранение заказа в PostgreSQL.
                 </p>
                 <p>Авторизация — через одноразовый e-mail-код. После входа создаются cookies:
                     <br>• <code>sid</code> — идентификатор сессии (HttpOnly).
@@ -111,9 +111,8 @@
         <div class="desc">
             <ol style="margin-left:20px">
                 <li><b>Browser (Frontend)</b> — интерфейс пользователя на HTML, CSS и JavaScript.</li>
-                <li><b>Cloudflare Pages</b> — размещает статические файлы сайта.</li>
-                <li><b>Cloudflare Functions</b> — серверная логика, API-эндпоинты.</li>
-                <li><b>D1 Database</b> — база данных, где хранятся пользователи, товары и заказы.</li>
+                <li><b>FastAPI (Python)</b> — серверная логика, API-эндпоинты, отдача статики.</li>
+                <li><b>PostgreSQL</b> — база данных, где хранятся пользователи, товары и заказы.</li>
             </ol>
         </div>
     </section>
