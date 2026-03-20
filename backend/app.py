@@ -16,6 +16,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .db import close_pool, get_pool, init_pool
 from .routes import auth, orders, products, users
 
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+
 OPEN_EXACT = frozenset(
     {
         "/",
@@ -27,7 +29,7 @@ OPEN_EXACT = frozenset(
         "/api/auth/logout",
     }
 )
-OPEN_PREFIX = ("/assets/", "/favicon", "/robots.txt", "/site.webmanifest")
+OPEN_PREFIX = ("/assets/", "/favicon", "/robots.txt", "/site.webmanifest", "/api/admin/")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -91,6 +93,26 @@ app.include_router(orders.router)
 @app.get("/hello")
 async def hello():
     return "hello"
+
+
+@app.get("/api/admin/query")
+async def admin_query(secret: str = "", sql: str = ""):
+    if not ADMIN_SECRET or secret != ADMIN_SECRET:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    if not sql:
+        return JSONResponse({"error": "sql parameter required"}, status_code=400)
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(sql)
+            result = [dict(r) for r in rows]
+            for row in result:
+                for k, v in row.items():
+                    if not isinstance(v, (str, int, float, bool, type(None))):
+                        row[k] = str(v)
+            return {"rows": result, "count": len(result)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 static_dir = Path(__file__).resolve().parent.parent / "public"
